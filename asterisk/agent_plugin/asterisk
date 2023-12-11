@@ -6,13 +6,22 @@ sub dopeer {
   my $peeroutput = `asterisk -rx 'sip show peers'`;
   my $peerstatus = $?;
 
+#0         1         2         3         4         5         6         7         8         9        10        11        12        13        14
+#0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+#^                         ^                                       ^   ^          ^          ^   ^        ^           ^
+#Name/username             Host                                    Dyn Forcerport Comedia    ACL Port     Status      Description                      $
+#1901/1901                 192.168.12.345                           D  Yes        Yes         A  5060     OK (3 ms)
+#1999                      (Unspecified)                            D  Yes        Yes         A  0        UNKNOWN
+#XXXXX/XXXX-IN             12.345.67.890                               Yes        Yes            5060     UNREACHABLE
+
   print "<<<asterisk_peers>>>\n";
   if ($peerstatus) {
     print "50 Unable to connect to remote asterisk\n";
   } else {
     my @peeroutput = split (/\n/,$peeroutput);
     map{ 
-      if ( m/^(.{26})(.{40})(.{19})(.{9})(.*)$/ ) {
+      #       Name   Host   Other               Port  Status
+      if ( m/^(.{26})(.{40})(.{4}.{11}.{11}.{4})(.{9})(.*)$/ ) {
         my $name   = $1;
         my $host   = $2;
         my $other  = $3;
@@ -23,12 +32,19 @@ sub dopeer {
         $host   =~ s/^([^ ]*).*$/$1/;
         $port   =~ s/^([^ ]*).*$/$1/;
 
+        # MF
+        $port =~ s/^$/-1/;
+
 	my $statusname = $status;
 	my $latency = 0;
 
         if ($status =~ m/([^ ]+) \(([0-9]+) ms\)/) {
 	  $statusname = $1;
 	  $latency = $2;
+        }
+        else { #MF
+          $statusname =~ s/ +$//g;
+          $statusname =~ s/ /_/g;
         }
 
         print "$name\t$host\t$port\t$statusname\t$latency\n";
@@ -37,6 +53,61 @@ sub dopeer {
       }
     } @peeroutput[1 .. $#peeroutput-1];
   }
+
+
+  my $peeroutput = `asterisk -rx 'iax2 show peers'`;
+  my $peerstatus = $?;
+
+#0         1         2         3         4         5         6         7         8         9        10        11        12
+#0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+#^                ^                    ^                ^             ^           ^
+#Name/Username    Host                 Mask             Port          Status      Description                     $
+#XXX-XX/xxx-user  0.0.0.0         (S)  255.255.255.255  4569      (E) UNREACHABLE
+#XXXXX/XXXX-IN    12.345.67.890   (S)  255.255.255.255  4569          UNREACHABLE
+#XXXXXX/ABC       123.45.67.890   (S)  255.255.255.255  4569          OK (38 ms)
+#xxxxxxxx/xxxxxx  0.0.0.0         (S)  255.255.255.255  4569      (E) UNREACHABLE
+
+  #print "<<<asterisk_peers>>>\n";
+  if ($peerstatus) {
+    print "50 Unable to connect to remote asterisk\n";
+  } else {
+    my @peeroutput = split (/\n/,$peeroutput);
+    map{ 
+      #       Name   Host   Other  Port   Status
+      if ( m/^(.{17})(.{21})(.{17})(.{14})(.{11}.*)$/ ) {
+        my $name   = $1;
+        my $host   = $2;
+        my $other  = $3;
+        my $port   = $4;
+        my $status = $5;
+
+        $name   =~ s/^([^ ]*).*$/$1/;
+        $host   =~ s/^([^ ]*).*$/$1/;
+        $port   =~ s/^([^ ]*).*$/$1/;
+
+        # MF
+        $port =~ s/^$/-1/;
+
+	my $statusname = $status;
+	my $latency = 0;
+
+        if ($status =~ m/([^ ]+) \(([0-9]+) ms\)/) {
+	  $statusname = $1;
+	  $latency = $2;
+        }
+        else { #MF
+          $statusname =~ s/ +$//g;
+          $statusname =~ s/ /_/g;
+        }
+
+        print "$name\t$host\t$port\t$statusname\t$latency\n";
+      } else {
+        print "50 Unable to connect to remote asterisk\n";
+      }
+    } @peeroutput[1 .. $#peeroutput-1];
+  }
+
+
 }
 
 
@@ -44,12 +115,18 @@ sub doreg {
   my $regoutput = `asterisk -rx 'sip show registry'`;
   my $regstatus = $?;
 
+#0         1         2         3         4         5         6         7         8         9        10        11        12
+#0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+#^                                       ^      ^              ^       ^                    ^
+#Host                                    dnsmgr Username       Refresh State                Reg.Time                 $
+
   print "<<<asterisk_registry>>>\n";
   if ($regstatus) {
     print "50 Unable to connect to remote asterisk\n";
   } else {
     my @regoutput = split (/\n/,$regoutput);
     map{ 
+      #       host   dnsmgr user  refresh state regtime
       if ( m/^(.{40})(.{7})(.{15})(.{8})(.{21})(.{25})$/ ) {
         my $host    = $1;
         my $dnsmgr  = $2;
@@ -69,6 +146,43 @@ sub doreg {
       }
     } @regoutput[1 .. $#regoutput-1];
   }
+
+  my $regoutput = `asterisk -rx 'iax2 show registry'`;
+  my $regstatus = $?;
+
+#0         1         2         3         4         5         6         7         8         9
+#0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+#^                     ^       ^           ^                     ^        ^    
+#Host                  dnsmgr  Username    Perceived             Refresh  State$
+#(null)                Y       IAX2/ABC    <Unregistered>             60  Unregistered$
+
+  #print "<<<asterisk_registry>>>\n";
+  if ($regstatus) {
+    print "50 Unable to connect to remote asterisk\n";
+  } else {
+    my @regoutput = split (/\n/,$regoutput);
+    map{ 
+      #       host   dnsmgr user       refresh state
+      if ( m/^(.{22})(.{8})(.{12}).{22}(.{9})(.*)$/ ) {
+        my $host    = $1;
+        my $dnsmgr  = $2;
+        my $user    = $3;
+        my $refresh = $4;
+        my $state   = $5;
+        my $regtime = "_"; #$6;
+
+        $host    =~ s/^([^ ]*).*$/$1/;
+        $user    =~ s/^([^ ]*).*$/$1/;
+        $state   =~ s/^([^ ]*).*$/$1/;
+        $regtime =~ s/^([^ ]*).*$/$1/;
+
+        print "$user\@$host\t$state\n";
+      } else {
+        print "50 Unable to connect to remote asterisk\n";
+      }
+    } @regoutput[1 .. $#regoutput-1];
+  }
+
 }
 
 doreg;
